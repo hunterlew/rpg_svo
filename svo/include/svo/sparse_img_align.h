@@ -34,7 +34,7 @@ class SparseImgAlign : public vk::NLLSSolver<6, SE3>
 {
   static const int patch_halfsize_ = 2;
   static const int patch_size_ = 2*patch_halfsize_;
-  static const int patch_area_ = patch_size_*patch_size_;
+  static const int patch_area_ = patch_size_*patch_size_;  // 4*4
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 

@@ -70,9 +70,10 @@ void Reprojector::reprojectMap(
   // Identify those Keyframes which share a common field of view.
   SVO_START_TIMER("reproject_kfs");
   list< pair<FramePtr,double> > close_kfs;
-  map_.getCloseKeyframes(frame, close_kfs);
+  map_.getCloseKeyframes(frame, close_kfs);  // search keyframes sharing a common fov
+                                             // one feature point is enough
 
-  // Sort KFs with overlap according to their closeness
+  // Sort KFs with overlap according to their closeness (i.e. translations)
   close_kfs.sort(boost::bind(&std::pair<FramePtr, double>::second, _1) <
                  boost::bind(&std::pair<FramePtr, double>::second, _2));
 
@@ -81,7 +82,7 @@ void Reprojector::reprojectMap(
   size_t n = 0;
   overlap_kfs.reserve(options_.max_n_kfs);
   for(auto it_frame=close_kfs.begin(), ite_frame=close_kfs.end();
-      it_frame!=ite_frame && n<options_.max_n_kfs; ++it_frame, ++n)
+      it_frame!=ite_frame && n<options_.max_n_kfs; ++it_frame, ++n)  // max 10 close keyframes
   {
     FramePtr ref_frame = it_frame->first;
     overlap_kfs.push_back(pair<FramePtr,size_t>(ref_frame,0));
@@ -91,14 +92,14 @@ void Reprojector::reprojectMap(
         it_ftr!=ite_ftr; ++it_ftr)
     {
       // check if the feature has a mappoint assigned
-      if((*it_ftr)->point == NULL)
+      if((*it_ftr)->point == NULL)  // no outliers
         continue;
 
       // make sure we project a point only once
       if((*it_ftr)->point->last_projected_kf_id_ == frame->id_)
         continue;
       (*it_ftr)->point->last_projected_kf_id_ = frame->id_;
-      if(reprojectPoint(frame, (*it_ftr)->point))
+      if(reprojectPoint(frame, (*it_ftr)->point))  // projected inside current frame
         overlap_kfs.back().second++;
     }
   }

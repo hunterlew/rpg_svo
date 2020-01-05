@@ -45,31 +45,32 @@ InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
   trackKlt(frame_ref_, frame_cur, px_ref_, px_cur_, f_ref_, f_cur_, disparities_);
   SVO_INFO_STREAM("Init: KLT tracked "<< disparities_.size() <<" features");
 
-  if(disparities_.size() < Config::initMinTracked())
-    return FAILURE;
+  if(disparities_.size() < Config::initMinTracked())  // 50
+    return FAILURE;  // resetAll
 
+  // TODO
   double disparity = vk::getMedian(disparities_);
   SVO_INFO_STREAM("Init: KLT "<<disparity<<"px average disparity.");
-  if(disparity < Config::initMinDisparity())
-    return NO_KEYFRAME;
+  if(disparity < Config::initMinDisparity())  // 50
+    return NO_KEYFRAME;  // wait until keyframe
 
   computeHomography(
       f_ref_, f_cur_,
-      frame_ref_->cam_->errorMultiplier2(), Config::poseOptimThresh(),
+      frame_ref_->cam_->errorMultiplier2(), Config::poseOptimThresh(), // 2
       inliers_, xyz_in_cur_, T_cur_from_ref_);
   SVO_INFO_STREAM("Init: Homography RANSAC "<<inliers_.size()<<" inliers.");
 
-  if(inliers_.size() < Config::initMinInliers())
+  if(inliers_.size() < Config::initMinInliers())  // 40, i.e. 40/50 = 80%
   {
     SVO_WARN_STREAM("Init WARNING: "<<Config::initMinInliers()<<" inliers minimum required.");
-    return FAILURE;
+    return FAILURE;  // resetAll
   }
 
   // Rescale the map such that the mean scene depth is equal to the specified scale
   vector<double> depth_vec;
   for(size_t i=0; i<xyz_in_cur_.size(); ++i)
-    depth_vec.push_back((xyz_in_cur_[i]).z());
-  double scene_depth_median = vk::getMedian(depth_vec);
+    depth_vec.push_back((xyz_in_cur_[i]).z());  // z from trianglation
+  double scene_depth_median = vk::getMedian(depth_vec);  // plane average depth
   double scale = Config::mapScale()/scene_depth_median;
   frame_cur->T_f_w_ = T_cur_from_ref_ * frame_ref_->T_f_w_;
   frame_cur->T_f_w_.translation() =
@@ -81,14 +82,18 @@ InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
   {
     Vector2d px_cur(px_cur_[*it].x, px_cur_[*it].y);
     Vector2d px_ref(px_ref_[*it].x, px_ref_[*it].y);
+
+    // isInFrame
+//    return (obs[0]>=boundary && obs[0]<width()-boundary
+//            && obs[1]>=boundary && obs[1]<height()-boundary)
     if(frame_ref_->cam_->isInFrame(px_cur.cast<int>(), 10) && frame_ref_->cam_->isInFrame(px_ref.cast<int>(), 10) && xyz_in_cur_[*it].z() > 0)
     {
       Vector3d pos = T_world_cur * (xyz_in_cur_[*it]*scale);
-      Point* new_point = new Point(pos);
+      Point* new_point = new Point(pos);  // 3d points for BA
 
       Feature* ftr_cur(new Feature(frame_cur.get(), new_point, px_cur, f_cur_[*it], 0));
       frame_cur->addFeature(ftr_cur);
-      new_point->addFrameRef(ftr_cur);
+      new_point->addFrameRef(ftr_cur);  // see point.h
 
       Feature* ftr_ref(new Feature(frame_ref_.get(), new_point, px_ref, f_ref_[*it], 0));
       frame_ref_->addFeature(ftr_ref);
@@ -114,7 +119,7 @@ void detectFeatures(
       frame->img().cols, frame->img().rows, Config::gridSize(), Config::nPyrLevels());
   detector.detect(frame.get(), frame->img_pyr_, Config::triangMinCornerScore(), new_features);
 
-  // now for all maximum corners, initialize a new seed
+  // now for all maximum corners, initialize a new seed (i.e. the first frame)
   px_vec.clear(); px_vec.reserve(new_features.size());
   f_vec.clear(); f_vec.reserve(new_features.size());
   std::for_each(new_features.begin(), new_features.end(), [&](Feature* ftr){
@@ -133,6 +138,9 @@ void trackKlt(
     vector<Vector3d>& f_cur,
     vector<double>& disparities)
 {
+    // for detail, see
+//  https://docs.opencv.org/2.4/modules/video/doc/motion_analysis_and_object_tracking.html#calcopticalflowpyrlk
+
   const double klt_win_size = 30.0;
   const int klt_max_iter = 30;
   const double klt_eps = 0.001;
@@ -153,20 +161,22 @@ void trackKlt(
   disparities.clear(); disparities.reserve(px_cur.size());
   for(size_t i=0; px_ref_it != px_ref.end(); ++i)
   {
-    if(!status[i])
+    if(!status[i])  // not found
     {
       px_ref_it = px_ref.erase(px_ref_it);
       px_cur_it = px_cur.erase(px_cur_it);
       f_ref_it = f_ref.erase(f_ref_it);
       continue;
     }
-    f_cur.push_back(frame_cur->c2f(px_cur_it->x, px_cur_it->y));
-    disparities.push_back(Vector2d(px_ref_it->x - px_cur_it->x, px_ref_it->y - px_cur_it->y).norm());
+    f_cur.push_back(frame_cur->c2f(px_cur_it->x, px_cur_it->y));  // normalized plane z=1
+    disparities.push_back(Vector2d(px_ref_it->x - px_cur_it->x, px_ref_it->y - px_cur_it->y).norm());  // yes
     ++px_ref_it;
     ++px_cur_it;
     ++f_ref_it;
   }
 }
+
+// for details, see https://github.com/hunterlew/rpg_vikit/blob/master/vikit_common/src/homography.cpp
 
 void computeHomography(
     const vector<Vector3d>& f_ref,
@@ -185,7 +195,7 @@ void computeHomography(
     uv_cur[i] = vk::project2d(f_cur[i]);
   }
   vk::Homography Homography(uv_ref, uv_cur, focal_length, reprojection_threshold);
-  Homography.computeSE3fromMatches();
+  Homography.computeSE3fromMatches();  // compute H and decompose -> R/t
   vector<int> outliers;
   vk::computeInliers(f_cur, f_ref,
                      Homography.T_c2_from_c1.rotation_matrix(), Homography.T_c2_from_c1.translation(),

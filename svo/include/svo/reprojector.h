@@ -73,7 +73,7 @@ private:
     Candidate(Point* pt, Vector2d& px) : pt(pt), px(px) {}
   };
   typedef std::list<Candidate > Cell;
-  typedef std::vector<Cell*> CandidateGrid;
+  typedef std::vector<Cell*> CandidateGrid;  // vector contains grid, and each grid has a list
 
   /// The grid stores a set of candidate matches. For every grid cell we try to find one match.
   struct Grid

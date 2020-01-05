@@ -68,7 +68,7 @@ protected:
   static const int border_ = 8; //!< no feature should be within 8px of border.
   const int cell_size_;
   const int n_pyr_levels_;
-  const int grid_n_cols_;
+  const int grid_n_cols_;  // allow average distribution
   const int grid_n_rows_;
   vector<bool> grid_occupancy_;
 

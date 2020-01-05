@@ -158,12 +158,14 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "svo");
   ros::NodeHandle nh;
   std::cout << "create vo_node" << std::endl;
-  svo::VoNode vo_node;
+  svo::VoNode vo_node;  // initialize camera, reprojector, feature-detector, depth-filter ...
 
   // subscribe to cam msgs
   std::string cam_topic(vk::getParam<std::string>("svo/cam_topic", "camera/image_raw"));
   image_transport::ImageTransport it(nh);
   image_transport::Subscriber it_sub = it.subscribe(cam_topic, 5, &svo::VoNode::imgCb, &vo_node);
+  // http://docs.ros.org/diamondback/api/image_transport/html/classimage__transport_1_1ImageTransport.html
+  // subscribe to an image topic, version for class member function with bare pointer
 
   // subscribe to remote input
   vo_node.sub_remote_key_ = nh.subscribe("svo/remote_key", 5, &svo::VoNode::remoteKeyCb, &vo_node);

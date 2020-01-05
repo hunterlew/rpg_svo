@@ -69,11 +69,15 @@ void FastDetector::detect(
     const double detection_threshold,
     Features& fts)
 {
+    // width / cell_size, height / cell_size
   Corners corners(grid_n_cols_*grid_n_rows_, Corner(0,0,detection_threshold,0,0.0f));
   for(int L=0; L<n_pyr_levels_; ++L)
   {
     const int scale = (1<<L);
     vector<fast::fast_xy> fast_corners;
+
+    // for details, read https://github.com/uzh-rpg/fast
+
 #if __SSE2__
       fast::fast_corner_detect_10_sse2(
           (fast::fast_byte*) img_pyr[L].data, img_pyr[L].cols,
@@ -95,16 +99,17 @@ void FastDetector::detect(
     {
       fast::fast_xy& xy = fast_corners.at(*it);
       const int k = static_cast<int>((xy.y*scale)/cell_size_)*grid_n_cols_
-                  + static_cast<int>((xy.x*scale)/cell_size_);
-      if(grid_occupancy_[k])
+                  + static_cast<int>((xy.x*scale)/cell_size_);  // compute grid index
+      if(grid_occupancy_[k])  // already occupied?
         continue;
-      const float score = vk::shiTomasiScore(img_pyr[L], xy.x, xy.y);
+      const float score = vk::shiTomasiScore(img_pyr[L], xy.x, xy.y);  // min(λ1, λ2)
       if(score > corners.at(k).score)
-        corners.at(k) = Corner(xy.x*scale, xy.y*scale, score, L, 0.0f);
+        corners.at(k) = Corner(xy.x*scale, xy.y*scale, score, L, 0.0f);  // save the best in each grid, across all scales
     }
   }
 
   // Create feature for every corner that has high enough corner score
+  // so not every grid exists a good feature
   std::for_each(corners.begin(), corners.end(), [&](Corner& c) {
     if(c.score > detection_threshold)
       fts.push_back(new Feature(frame, Vector2d(c.x, c.y), c.level));

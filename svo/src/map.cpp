@@ -115,6 +115,8 @@ void Map::getCloseKeyframes(
       if(keypoint == nullptr)
         continue;
 
+      // visible means z > 0 && (u,v) in image
+      // as long as one point visible, used as close keyframes
       if(frame->isVisible(keypoint->point->pos_))
       {
         close_kfs.push_back(

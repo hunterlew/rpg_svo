@@ -52,20 +52,23 @@ size_t SparseImgAlign::run(FramePtr ref_frame, FramePtr cur_frame)
 
   ref_frame_ = ref_frame;
   cur_frame_ = cur_frame;
-  ref_patch_cache_ = cv::Mat(ref_frame_->fts_.size(), patch_area_, CV_32F);
-  jacobian_cache_.resize(Eigen::NoChange, ref_patch_cache_.rows*patch_area_);
-  visible_fts_.resize(ref_patch_cache_.rows, false); // TODO: should it be reset at each level?
+  ref_patch_cache_ = cv::Mat(ref_frame_->fts_.size(), patch_area_, CV_32F);  // features_size * 16
+  jacobian_cache_.resize(Eigen::NoChange, ref_patch_cache_.rows*patch_area_);  // 6 * (features_size*16)
+  visible_fts_.resize(ref_patch_cache_.rows, false); // TODO: should it be reset at each level?  // features_size
 
-  SE3 T_cur_from_ref(cur_frame_->T_f_w_ * ref_frame_->T_f_w_.inverse());
+  SE3 T_cur_from_ref(cur_frame_->T_f_w_ * ref_frame_->T_f_w_.inverse());  // initialized as I
 
+  // optimize in each level
+  // higher level means smaller image size
   for(level_=max_level_; level_>=min_level_; --level_)
   {
-    mu_ = 0.1;
+    mu_ = 0.1;  // learning rate
     jacobian_cache_.setZero();
     have_ref_patch_cache_ = false;
     if(verbose_)
       printf("\nPYRAMID LEVEL %i\n---------------\n", level_);
-    optimize(T_cur_from_ref);
+    optimize(T_cur_from_ref);  // details in nlls_solver_impl.hpp
+                               // use higher level results for initialization
   }
   cur_frame_->T_f_w_ = T_cur_from_ref * ref_frame_->T_f_w_;
 
@@ -104,11 +107,12 @@ void SparseImgAlign::precomputeReferencePatches()
     *visiblity_it = true;
 
     // cannot just take the 3d points coordinate because of the reprojection errors in the reference image!!!
+    // why?
     const double depth(((*it)->point->pos_ - ref_pos).norm());
     const Vector3d xyz_ref((*it)->f*depth);
 
     // evaluate projection jacobian
-    Matrix<double,2,6> frame_jac;
+    Matrix<double,2,6> frame_jac;  // 2d measurements, 6d estimates
     Frame::jacobian_xyz2uv(xyz_ref, frame_jac);
 
     // compute bilateral interpolation weights for reference image
@@ -119,13 +123,17 @@ void SparseImgAlign::precomputeReferencePatches()
     const float w_ref_bl = (1.0-subpix_u_ref) * subpix_v_ref;
     const float w_ref_br = subpix_u_ref * subpix_v_ref;
     size_t pixel_counter = 0;
+    // ref_patch_cache_: ft_size * 16
+    // cache_ptr points to each row, i.e. each feature
+    // and each row stores 4*4 interpolated pixel value
     float* cache_ptr = reinterpret_cast<float*>(ref_patch_cache_.data) + patch_area_*feature_counter;
-    for(int y=0; y<patch_size_; ++y)
+    for(int y=0; y<patch_size_; ++y)  // patch_size 4
     {
       uint8_t* ref_img_ptr = (uint8_t*) ref_img.data + (v_ref_i+y-patch_halfsize_)*stride + (u_ref_i-patch_halfsize_);
       for(int x=0; x<patch_size_; ++x, ++ref_img_ptr, ++cache_ptr, ++pixel_counter)
       {
         // precompute interpolated reference patch color
+        // bilinear interpolation
         *cache_ptr = w_ref_tl*ref_img_ptr[0] + w_ref_tr*ref_img_ptr[1] + w_ref_bl*ref_img_ptr[stride] + w_ref_br*ref_img_ptr[stride+1];
 
         // we use the inverse compositional: thereby we can take the gradient always at the same position
@@ -135,7 +143,13 @@ void SparseImgAlign::precomputeReferencePatches()
         float dy = 0.5f * ((w_ref_tl*ref_img_ptr[stride] + w_ref_tr*ref_img_ptr[1+stride] + w_ref_bl*ref_img_ptr[stride*2] + w_ref_br*ref_img_ptr[stride*2+1])
                           -(w_ref_tl*ref_img_ptr[-stride] + w_ref_tr*ref_img_ptr[1-stride] + w_ref_bl*ref_img_ptr[0] + w_ref_br*ref_img_ptr[1]));
 
-        // cache the jacobian
+        // cache the jacobian: 6 * (ft_size*16)
+        // each point's contribution to 6 dof pose
+        // yes, J = -ImageGradient * Jacobian_pose2uv, (1*2)*(2*6) = 1*6
+        // attention! it is scaled by level
+        // TODO: bug?! jacobian should use cur_img gradients and cur_xyz, not always the same value
+        // no bug! it uses inverse compositional method
+        // see details in 'Lucas-Kanade 20 Years On: A Unifying Framework, 2004'
         jacobian_cache_.col(feature_counter*patch_area_ + pixel_counter) =
             (dx*frame_jac.row(0) + dy*frame_jac.row(1))*(focal_length / (1<<level_));
       }
@@ -173,12 +187,12 @@ double SparseImgAlign::computeResiduals(
       ++it, ++feature_counter, ++visiblity_it)
   {
     // check if feature is within image
-    if(!*visiblity_it)
+    if(!*visiblity_it)  // computed in precomputeReferencePatches()
       continue;
 
     // compute pixel location in cur img
     const double depth = ((*it)->point->pos_ - ref_pos).norm();
-    const Vector3d xyz_ref((*it)->f*depth);
+    const Vector3d xyz_ref((*it)->f*depth);  // direction vector, where f means unit vector
     const Vector3d xyz_cur(T_cur_from_ref * xyz_ref);
     const Vector2f uv_cur_pyr(cur_frame_->cam_->world2cam(xyz_cur).cast<float>() * scale);
     const float u_cur = uv_cur_pyr[0];
@@ -205,9 +219,12 @@ double SparseImgAlign::computeResiduals(
 
       for(int x=0; x<patch_size_; ++x, ++pixel_counter, ++cur_img_ptr, ++ref_patch_cache_ptr)
       {
+            // bilinear interpolation
         // compute residual
+        // pixel by pixel in 4*4 patch
         const float intensity_cur = w_cur_tl*cur_img_ptr[0] + w_cur_tr*cur_img_ptr[1] + w_cur_bl*cur_img_ptr[stride] + w_cur_br*cur_img_ptr[stride+1];
         const float res = intensity_cur - (*ref_patch_cache_ptr);
+        // err = meas - est, inverse
 
         // used to compute scale for robust cost
         if(compute_weight_scale)
@@ -224,10 +241,20 @@ double SparseImgAlign::computeResiduals(
 
         if(linearize_system)
         {
+          // ready for Gauss-Newton:
+          // x = -H.inv * (J.T * res)
+
           // compute Jacobian, weighted Hessian and weighted "steepest descend images" (times error)
+          // H1 * dpos = -J1.T * res1
+          // H2 * dpos = -J2.T * res2
+          // ...
+          // add together: 
+          // Sum(H) * dpos = -Sum(J.T * res)
           const Vector6d J(jacobian_cache_.col(feature_counter*patch_area_ + pixel_counter));
           H_.noalias() += J*J.transpose()*weight;
           Jres_.noalias() -= J*res*weight;
+          // noalias means no ambiguity for right-value
+          // speed up when right-value is matrix multiplication
           if(display_)
             resimg_.at<float>((int) v_cur+y-patch_halfsize_, (int) u_cur+x-patch_halfsize_) = res/255.0;
         }
@@ -254,6 +281,7 @@ void SparseImgAlign::update(
     const ModelType& T_curold_from_ref,
     ModelType& T_curnew_from_ref)
 {
+  // yes, inverse compositional method
   T_curnew_from_ref =  T_curold_from_ref * SE3::exp(-x_);
 }
 

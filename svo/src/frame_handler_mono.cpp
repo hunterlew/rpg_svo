@@ -41,13 +41,14 @@ FrameHandlerMono::FrameHandlerMono(vk::AbstractCamera* cam) :
 
 void FrameHandlerMono::initialize()
 {
+    // use derived class 's shared ptr
   feature_detection::DetectorPtr feature_detector(
       new feature_detection::FastDetector(
           cam_->width(), cam_->height(), Config::gridSize(), Config::nPyrLevels()));
   DepthFilter::callback_t depth_filter_cb = boost::bind(
       &MapPointCandidates::newCandidatePoint, &map_.point_candidates_, _1, _2);
   depth_filter_ = new DepthFilter(feature_detector, depth_filter_cb);
-  depth_filter_->startThread();
+  depth_filter_->startThread();  // multi-thread
 }
 
 FrameHandlerMono::~FrameHandlerMono()
@@ -92,7 +93,7 @@ FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
 {
   new_frame_->T_f_w_ = SE3(Matrix3d::Identity(), Vector3d::Zero());
   if(klt_homography_init_.addFirstFrame(new_frame_) == initialization::FAILURE)
-    return RESULT_NO_KEYFRAME;
+    return RESULT_NO_KEYFRAME;  // wait until keyframe, i.e. enough features
   new_frame_->setKeyframe();
   map_.addKeyframe(new_frame_);
   stage_ = STAGE_SECOND_FRAME;
@@ -104,9 +105,9 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processSecondFrame()
 {
   initialization::InitResult res = klt_homography_init_.addSecondFrame(new_frame_);
   if(res == initialization::FAILURE)
-    return RESULT_FAILURE;
+    return RESULT_FAILURE;  // resetAll
   else if(res == initialization::NO_KEYFRAME)
-    return RESULT_NO_KEYFRAME;
+    return RESULT_NO_KEYFRAME;  // it does not matter, wait until keyframe, i.e. enough disparity and inliers
 
   // two-frame bundle adjustment
 #ifdef USE_BUNDLE_ADJUSTMENT
@@ -120,7 +121,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processSecondFrame()
 
   // add frame to map
   map_.addKeyframe(new_frame_);
-  stage_ = STAGE_DEFAULT_FRAME;
+  stage_ = STAGE_DEFAULT_FRAME;  // finish initialization
   klt_homography_init_.reset();
   SVO_INFO_STREAM("Init: Selected second frame, triangulated initial map.");
   return RESULT_IS_KEYFRAME;
@@ -133,7 +134,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
 
   // sparse image align
   SVO_START_TIMER("sparse_img_align");
-  SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),
+  SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),  // 4 -> 2
                            30, SparseImgAlign::GaussNewton, false, false);
   size_t img_align_n_tracked = img_align.run(last_frame_, new_frame_);
   SVO_STOP_TIMER("sparse_img_align");

@@ -28,9 +28,9 @@ class VertexSBAPointXYZ;
 
 namespace svo {
 
-typedef g2o::EdgeProjectXYZ2UV g2oEdgeSE3;
-typedef g2o::VertexSE3Expmap g2oFrameSE3;
-typedef g2o::VertexSBAPointXYZ g2oPoint;
+typedef g2o::EdgeProjectXYZ2UV g2oEdgeSE3;  // err
+typedef g2o::VertexSE3Expmap g2oFrameSE3;   // pose
+typedef g2o::VertexSBAPointXYZ g2oPoint;    // point
 
 class Frame;
 class Point;
@@ -61,7 +61,7 @@ void twoViewBA(Frame* frame1, Frame* frame2, double reproj_thresh, Map* map);
 /// neighbourhood fixed.
 void localBA(
     Frame* center_kf,
-    set<FramePtr>* core_kfs,
+    set<FramePtr>* core_kfs,  // sliding windows?
     Map* map,
     size_t& n_incorrect_edges_1,
     size_t& n_incorrect_edges_2,

@@ -129,6 +129,7 @@ int FrameHandlerBase::finishFrameProcessingCommon(
   }
 #endif
 
+  // check result here, if needing relocalizing
   if(dropout == RESULT_FAILURE &&
       (stage_ == STAGE_DEFAULT_FRAME || stage_ == STAGE_RELOCALIZING ))
   {

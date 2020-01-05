@@ -55,20 +55,21 @@ void twoViewBA(
   size_t v_id = 0;
 
   // New Keyframe Vertex 1: This Keyframe is set to fixed!
-  g2oFrameSE3* v_frame1 = createG2oFrameSE3(frame1, v_id++, true);
+  // used as reference frame,  and then we estimate later frame's pose relative to reference frame
+  g2oFrameSE3* v_frame1 = createG2oFrameSE3(frame1, v_id++, true);  // id 1
   optimizer.addVertex(v_frame1);
 
   // New Keyframe Vertex 2
-  g2oFrameSE3* v_frame2 = createG2oFrameSE3(frame2, v_id++, false);
+  g2oFrameSE3* v_frame2 = createG2oFrameSE3(frame2, v_id++, false);  // id 2
   optimizer.addVertex(v_frame2);
 
   // Create Point Vertices
   for(Features::iterator it_ftr=frame1->fts_.begin(); it_ftr!=frame1->fts_.end(); ++it_ftr)
   {
     Point* pt = (*it_ftr)->point;
-    if(pt == NULL)
+    if(pt == NULL)  // outlier detected in last BA
       continue;
-    g2oPoint* v_pt = createG2oPoint(pt->pos_, v_id++, false);
+    g2oPoint* v_pt = createG2oPoint(pt->pos_, v_id++, false);  // id 3/4/5/...
     optimizer.addVertex(v_pt);
     pt->v_pt_ = v_pt;
     g2oEdgeSE3* e = createG2oEdgeSE3(v_frame1, v_pt, vk::project2d((*it_ftr)->f), true, reproj_thresh*Config::lobaRobustHuberWidth());
@@ -106,7 +107,7 @@ void twoViewBA(
   const double reproj_thresh_squared = reproj_thresh*reproj_thresh;
   size_t n_incorrect_edges = 0;
   for(list<EdgeContainerSE3>::iterator it_e = edges.begin(); it_e != edges.end(); ++it_e)
-    if(it_e->edge->chi2() > reproj_thresh_squared)
+    if(it_e->edge->chi2() > reproj_thresh_squared)  // method of detecting outliers and remove them from graph
     {
       if(it_e->feature->point != NULL)
       {
@@ -349,6 +350,7 @@ void setupG2o(g2o::SparseOptimizer * optimizer)
 
 #if SCHUR_TRICK
   // solver
+  // g2o::BlockSolver< BlockSolverTraits<6, 3> >;
   g2o::BlockSolver_6_3::LinearSolverType* linearSolver;
   linearSolver = new g2o::LinearSolverCholmod<g2o::BlockSolver_6_3::PoseMatrixType>();
   //linearSolver = new g2o::LinearSolverCSparse<g2o::BlockSolver_6_3::PoseMatrixType>();
@@ -404,7 +406,7 @@ createG2oPoint(Vector3d pos,
   g2oPoint* v = new g2oPoint();
   v->setId(id);
 #if SCHUR_TRICK
-  v->setMarginalized(true);
+  v->setMarginalized(true);  // TODO
 #endif
   v->setFixed(fixed);
   v->setEstimate(pos);
@@ -415,7 +417,7 @@ g2oEdgeSE3*
 createG2oEdgeSE3( g2oFrameSE3* v_frame,
                   g2oPoint* v_point,
                   const Vector2d& f_up,
-                  bool robust_kernel,
+                  bool robust_kernel,  // no use
                   double huber_width,
                   double weight)
 {
