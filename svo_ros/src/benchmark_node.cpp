@@ -17,7 +17,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
-#include <sophus/se3.h>
+#include <sophus/se3.hpp>
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <opencv2/opencv.hpp>

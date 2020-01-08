@@ -15,5 +15,6 @@
         "vector": "cpp",
         "valarray": "cpp",
         "core": "cpp"
-    }
+    },
+    // "C_Cpp.errorSquiggles": "Disabled"
 }
