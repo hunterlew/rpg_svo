@@ -103,15 +103,15 @@ bool Point::getCloseViewObs(const Vector3d& framepos, Feature*& ftr) const
   for(auto it=obs_.begin(), ite=obs_.end(); it!=ite; ++it)
   {
     Vector3d dir((*it)->frame->pos() - pos_); dir.normalize();
-    double cos_angle = obs_dir.dot(dir);
+    double cos_angle = obs_dir.dot(dir);  // larger angle, smaller cos value
     if(cos_angle > min_cos_angle)
     {
-      min_cos_angle = cos_angle;
+      min_cos_angle = cos_angle;  // find the largest angle diff from this frame
       min_it = it;
     }
   }
   ftr = *min_it;
-  if(min_cos_angle < 0.5) // assume that observations larger than 60° are useless
+  if(min_cos_angle < 0.5) // assume that observations larger than 60° are useless // unstable
     return false;
   return true;
 }
@@ -152,7 +152,7 @@ void Point::optimize(const size_t n_iter)
            << "\t FAILURE \t new_chi2 = " << new_chi2 << endl;
 #endif
       pos_ = old_point; // roll-back
-      break;
+      break;  // stop itering
     }
 
     // update the model

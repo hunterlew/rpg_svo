@@ -79,7 +79,7 @@ private:
   struct Grid
   {
     CandidateGrid cells;
-    vector<int> cell_order;
+    vector<int> cell_order;  // TODO: for what?
     int cell_size;
     int grid_n_cols;
     int grid_n_rows;

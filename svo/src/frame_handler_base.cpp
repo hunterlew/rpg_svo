@@ -136,7 +136,7 @@ int FrameHandlerBase::finishFrameProcessingCommon(
     stage_ = STAGE_RELOCALIZING;
     tracking_quality_ = TRACKING_INSUFFICIENT;
   }
-  else if (dropout == RESULT_FAILURE)
+  else if (dropout == RESULT_FAILURE)  // still not initialized and fail, reset
     resetAll();
   if(set_reset_)
     resetAll();
@@ -173,6 +173,7 @@ void FrameHandlerBase::setTrackingQuality(const size_t num_observations)
 
 bool ptLastOptimComparator(Point* lhs, Point* rhs)
 {
+  // compare frame_id
   return (lhs->last_structure_optim_ < rhs->last_structure_optim_);
 }
 

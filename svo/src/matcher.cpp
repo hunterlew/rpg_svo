@@ -45,11 +45,13 @@ void getWarpMatrixAffine(
   const Vector3d xyz_ref(f_ref*depth_ref);
   Vector3d xyz_du_ref(cam_ref.cam2world(px_ref + Vector2d(halfpatch_size,0)*(1<<level_ref)));
   Vector3d xyz_dv_ref(cam_ref.cam2world(px_ref + Vector2d(0,halfpatch_size)*(1<<level_ref)));
-  xyz_du_ref *= xyz_ref[2]/xyz_du_ref[2];
+  xyz_du_ref *= xyz_ref[2]/xyz_du_ref[2];  // assume the patch shares the same depth
   xyz_dv_ref *= xyz_ref[2]/xyz_dv_ref[2];
   const Vector2d px_cur(cam_cur.world2cam(T_cur_ref*(xyz_ref)));
   const Vector2d px_du(cam_cur.world2cam(T_cur_ref*(xyz_du_ref)));
   const Vector2d px_dv(cam_cur.world2cam(T_cur_ref*(xyz_dv_ref)));
+  // detla_pcur = A*delta_pref,
+  // if A is identity matrix, it means no affine transform for the patch
   A_cur_ref.col(0) = (px_du - px_cur)/halfpatch_size;
   A_cur_ref.col(1) = (px_dv - px_cur)/halfpatch_size;
 }
@@ -143,6 +145,9 @@ bool Matcher::findMatchDirect(
   if(!ref_ftr_->frame->cam_->isInFrame(
       ref_ftr_->px.cast<int>()/(1<<ref_ftr_->level), halfpatch_size_+2, ref_ftr_->level))
     return false;
+
+  // here do patch alignment again, but with initial value,
+  // taking possible affine transformation into consideration (maybe more precise?)
 
   // warp affine
   warp::getWarpMatrixAffine(

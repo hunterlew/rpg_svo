@@ -136,7 +136,7 @@ void Reprojector::reprojectMap(
     // and unknown quality over candidates (position not optimized)
     if(reprojectCell(*grid_.cells.at(grid_.cell_order[i]), frame))
       ++n_matches_;
-    if(n_matches_ > (size_t) Config::maxFts())
+    if(n_matches_ > (size_t) Config::maxFts())  // keep max 120 matches
       break;
   }
   SVO_STOP_TIMER("feature_align");
@@ -165,7 +165,9 @@ bool Reprojector::reprojectCell(Cell& cell, FramePtr frame)
 
     bool found_match = true;
     if(options_.find_match_direct)
-      found_match = matcher_.findMatchDirect(*it->pt, *frame, it->px);
+      found_match = matcher_.findMatchDirect(*it->pt, *frame, it->px);  // feature align iteration
+
+      // point quality
     if(!found_match)
     {
       it->pt->n_failed_reproj_++;
@@ -181,7 +183,7 @@ bool Reprojector::reprojectCell(Cell& cell, FramePtr frame)
       it->pt->type_ = Point::TYPE_GOOD;
 
     Feature* new_feature = new Feature(frame.get(), it->px, matcher_.search_level_);
-    frame->addFeature(new_feature);
+    frame->addFeature(new_feature);  // keep tracking this feature in new frame, one in cell
 
     // Here we add a reference in the feature to the 3D point, the other way
     // round is only done if this frame is selected as keyframe.

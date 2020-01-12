@@ -81,6 +81,7 @@ void FrameHandlerMono::addImage(const cv::Mat& img, const double timestamp)
   else if(stage_ == STAGE_RELOCALIZING)
     res = relocalizeFrame(SE3(Matrix3d::Identity(), Vector3d::Zero()),
                           map_.getClosestKeyframe(last_frame_));
+                          // use last keyframe's pose (not last frame) for relocating
 
   // set last frame
   last_frame_ = new_frame_;
@@ -142,6 +143,10 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   SVO_DEBUG_STREAM("Img Align:\t Tracked = " << img_align_n_tracked);
 
   // map reprojection & feature alignment
+  // among close keyframes, choose the best reprojected points to track, not only just from last frame
+  // then, fix pose and refine alignment considering affine transformation
+  // finally, check how many features are kept.
+  // if not enough, reset-> relocating
   SVO_START_TIMER("reproject");
   reprojector_.reprojectMap(new_frame_, overlap_kfs_);
   SVO_STOP_TIMER("reproject");
@@ -149,7 +154,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   const size_t repr_n_mps = reprojector_.n_trials_;
   SVO_LOG2(repr_n_mps, repr_n_new_references);
   SVO_DEBUG_STREAM("Reprojection:\t nPoints = "<<repr_n_mps<<"\t \t nMatches = "<<repr_n_new_references);
-  if(repr_n_new_references < Config::qualityMinFts())
+  if(repr_n_new_references < Config::qualityMinFts())  // 50
   {
     SVO_WARN_STREAM_THROTTLE(1.0, "Not enough matched features.");
     new_frame_->T_f_w_ = last_frame_->T_f_w_; // reset to avoid crazy pose jumps
@@ -158,6 +163,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   }
 
   // pose optimization
+  // iterative solving pose
   SVO_START_TIMER("pose_optimizer");
   size_t sfba_n_edges_final;
   double sfba_thresh, sfba_error_init, sfba_error_final;
@@ -168,12 +174,13 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   SVO_LOG4(sfba_thresh, sfba_error_init, sfba_error_final, sfba_n_edges_final);
   SVO_DEBUG_STREAM("PoseOptimizer:\t ErrInit = "<<sfba_error_init<<"px\t thresh = "<<sfba_thresh);
   SVO_DEBUG_STREAM("PoseOptimizer:\t ErrFin. = "<<sfba_error_final<<"px\t nObsFin. = "<<sfba_n_edges_final);
-  if(sfba_n_edges_final < 20)
+  if(sfba_n_edges_final < 20)  // to few inliers
     return RESULT_FAILURE;
 
   // structure optimization
+  // iterative solving 3d point
   SVO_START_TIMER("point_optimizer");
-  optimizeStructure(new_frame_, Config::structureOptimMaxPts(), Config::structureOptimNumIter());
+  optimizeStructure(new_frame_, Config::structureOptimMaxPts(), Config::structureOptimNumIter());  // max 20, iter 5
   SVO_STOP_TIMER("point_optimizer");
 
   // select keyframe
@@ -248,7 +255,7 @@ FrameHandlerMono::UpdateResult FrameHandlerMono::relocalizeFrame(
   SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),
                            30, SparseImgAlign::GaussNewton, false, false);
   size_t img_align_n_tracked = img_align.run(ref_keyframe, new_frame_);
-  if(img_align_n_tracked > 30)
+  if(img_align_n_tracked > 30)  // still enough match in last keyframe
   {
     SE3 T_f_w_last = last_frame_->T_f_w_;
     last_frame_ = ref_keyframe;
@@ -306,6 +313,7 @@ bool FrameHandlerMono::needNewKf(double scene_depth_mean)
 {
   for(auto it=overlap_kfs_.begin(), ite=overlap_kfs_.end(); it!=ite; ++it)
   {
+    // relative position to world ori
     Vector3d relpos = new_frame_->w2f(it->first->pos());
     if(fabs(relpos.x())/scene_depth_mean < Config::kfSelectMinDist() &&
        fabs(relpos.y())/scene_depth_mean < Config::kfSelectMinDist()*0.8 &&

@@ -38,7 +38,7 @@ void optimizeGaussNewton(
   // init
   double chi2(0.0);
   vector<double> chi2_vec_init, chi2_vec_final;
-  vk::robust_cost::TukeyWeightFunction weight_function;
+  vk::robust_cost::TukeyWeightFunction weight_function;  // higher error, lower weight
   SE3 T_old(frame->T_f_w_);
   Matrix6d A;
   Vector6d b;
@@ -57,7 +57,7 @@ void optimizeGaussNewton(
   if(errors.empty())
     return;
   vk::robust_cost::MADScaleEstimator scale_estimator;
-  estimated_scale = scale_estimator.compute(errors);
+  estimated_scale = scale_estimator.compute(errors);  // get median value, for what?
 
   num_obs = errors.size();
   chi2_vec_init.reserve(num_obs);
@@ -66,6 +66,7 @@ void optimizeGaussNewton(
   for(size_t iter=0; iter<n_iter; iter++)
   {
     // overwrite scale
+    // scale: control the weight?
     if(iter == 5)
       scale = 0.85/frame->cam_->errorMultiplier2();
 
