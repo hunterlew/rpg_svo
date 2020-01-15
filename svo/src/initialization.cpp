@@ -36,7 +36,7 @@ InitResult KltHomographyInit::addFirstFrame(FramePtr frame_ref)
     return FAILURE;
   }
   frame_ref_ = frame_ref;
-  px_cur_.insert(px_cur_.begin(), px_ref_.begin(), px_ref_.end());
+  px_cur_.insert(px_cur_.begin(), px_ref_.begin(), px_ref_.end());  // ready for the second keyframe
   return SUCCESS;
 }
 
@@ -54,6 +54,7 @@ InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
   if(disparity < Config::initMinDisparity())  // 50
     return NO_KEYFRAME;  // wait until keyframe
 
+// make sense for plane
   computeHomography(
       f_ref_, f_cur_,
       frame_ref_->cam_->errorMultiplier2(), Config::poseOptimThresh(), // 2
@@ -66,6 +67,7 @@ InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
     return FAILURE;  // resetAll
   }
 
+// set the map scale
   // Rescale the map such that the mean scene depth is equal to the specified scale
   vector<double> depth_vec;
   for(size_t i=0; i<xyz_in_cur_.size(); ++i)
@@ -73,8 +75,8 @@ InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
   double scene_depth_median = vk::getMedian(depth_vec);  // plane average depth
   double scale = Config::mapScale()/scene_depth_median;
   frame_cur->T_f_w_ = T_cur_from_ref_ * frame_ref_->T_f_w_;
-  frame_cur->T_f_w_.translation() =
-      -frame_cur->T_f_w_.rotation_matrix()*(frame_ref_->pos() + scale*(frame_cur->pos() - frame_ref_->pos()));
+  frame_cur->T_f_w_.translation() =  // apply scale to translation
+      -frame_cur->T_f_w_.rotation_matrix()*(frame_ref_->pos() + scale*(frame_cur->pos() - frame_ref_->pos())); 
 
   // For each inlier create 3D point and add feature in both frames
   SE3 T_world_cur = frame_cur->T_f_w_.inverse();
@@ -83,17 +85,15 @@ InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
     Vector2d px_cur(px_cur_[*it].x, px_cur_[*it].y);
     Vector2d px_ref(px_ref_[*it].x, px_ref_[*it].y);
 
-    // isInFrame
-//    return (obs[0]>=boundary && obs[0]<width()-boundary
-//            && obs[1]>=boundary && obs[1]<height()-boundary)
+    // px_cur and px_ref all projected inside ref frame
     if(frame_ref_->cam_->isInFrame(px_cur.cast<int>(), 10) && frame_ref_->cam_->isInFrame(px_ref.cast<int>(), 10) && xyz_in_cur_[*it].z() > 0)
     {
       Vector3d pos = T_world_cur * (xyz_in_cur_[*it]*scale);
-      Point* new_point = new Point(pos);  // 3d points for BA
+      Point* new_point = new Point(pos);  // 3d points in world coords
 
       Feature* ftr_cur(new Feature(frame_cur.get(), new_point, px_cur, f_cur_[*it], 0));
       frame_cur->addFeature(ftr_cur);
-      new_point->addFrameRef(ftr_cur);  // see point.h
+      new_point->addFrameRef(ftr_cur);
 
       Feature* ftr_ref(new Feature(frame_ref_.get(), new_point, px_ref, f_ref_[*it], 0));
       frame_ref_->addFeature(ftr_ref);

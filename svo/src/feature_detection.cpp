@@ -71,9 +71,10 @@ void FastDetector::detect(
 {
     // width / cell_size, height / cell_size
   Corners corners(grid_n_cols_*grid_n_rows_, Corner(0,0,detection_threshold,0,0.0f));
+  // detect from lower level
   for(int L=0; L<n_pyr_levels_; ++L)
   {
-    const int scale = (1<<L);
+    const int scale = (1<<L);  // 0, 2, 4, 8...
     vector<fast::fast_xy> fast_corners;
 
     // for details, read https://github.com/uzh-rpg/fast
@@ -100,11 +101,12 @@ void FastDetector::detect(
       fast::fast_xy& xy = fast_corners.at(*it);
       const int k = static_cast<int>((xy.y*scale)/cell_size_)*grid_n_cols_
                   + static_cast<int>((xy.x*scale)/cell_size_);  // compute grid index
-      if(grid_occupancy_[k])  // already occupied?
+      if(grid_occupancy_[k])  // already occupied by track history when trying to re-initialization TODO?
         continue;
       const float score = vk::shiTomasiScore(img_pyr[L], xy.x, xy.y);  // min(λ1, λ2)
       if(score > corners.at(k).score)
         corners.at(k) = Corner(xy.x*scale, xy.y*scale, score, L, 0.0f);  // save the best in each grid, across all scales
+                                                                        // results save in original level
     }
   }
 

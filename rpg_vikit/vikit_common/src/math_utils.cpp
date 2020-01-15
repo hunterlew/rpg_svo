@@ -83,7 +83,7 @@ computeInliers(const vector<Vector3d>& features1, // c1
     xyz_vec.push_back(triangulateFeatureNonLin(R, t, features1[j], features2[j] ));
     double e1 = reprojError(features1[j], xyz_vec.back(), error_multiplier2);
     double e2 = reprojError(features2[j], R.transpose()*(xyz_vec.back()-t), error_multiplier2);
-    if(e1 > reproj_thresh || e2 > reproj_thresh)
+    if(e1 > reproj_thresh || e2 > reproj_thresh)  // check reprojections on two frame
       outliers.push_back(j);
     else
     {

@@ -46,7 +46,8 @@ public:
   int                           id_;                    //!< Unique id of the frame.
   double                        timestamp_;             //!< Timestamp of when the image was recorded.
   vk::AbstractCamera*           cam_;                   //!< Camera model.
-  Sophus::SE3                   T_f_w_;                 //!< Transform (f)rame from (w)orld.
+  Sophus::SE3                   T_f_w_;                 //!< Transform (f)rame from (w)orld. 
+                                                        // i.e. T_world2frame
   Matrix<double, 6, 6>          Cov_;                   //!< Covariance.
   ImgPyr                        img_pyr_;               //!< Image Pyramid.
   Features                      fts_;                   //!< List of features in the image.
@@ -113,6 +114,7 @@ public:
 
   /// Frame jacobian for projection of 3D point in (f)rame coordinate to
   /// unit plane coordinates uv (focal length = 1).
+  // better rename 'jacobian_f2uv'
   inline static void jacobian_xyz2uv(
       const Vector3d& xyz_in_f,
       Matrix<double,2,6>& J)

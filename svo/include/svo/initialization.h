@@ -50,6 +50,7 @@ protected:
   vector<int> inliers_;             //!< inliers after the geometric check (e.g., Homography).
   vector<Vector3d> xyz_in_cur_;     //!< 3D points computed during the geometric check.
   SE3 T_cur_from_ref_;              //!< computed transformation between the first two frames.
+                                    // i.e. ref2cur
 };
 
 /// Detect Fast corners in the image.

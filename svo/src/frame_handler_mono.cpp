@@ -42,12 +42,16 @@ FrameHandlerMono::FrameHandlerMono(vk::AbstractCamera* cam) :
 void FrameHandlerMono::initialize()
 {
     // use derived class 's shared ptr
+    // detector initialization: like cell initialization ...
   feature_detection::DetectorPtr feature_detector(
       new feature_detection::FastDetector(
           cam_->width(), cam_->height(), Config::gridSize(), Config::nPyrLevels()));
+  // input callback: new point and point candidates
   DepthFilter::callback_t depth_filter_cb = boost::bind(
       &MapPointCandidates::newCandidatePoint, &map_.point_candidates_, _1, _2);
+  // TODO: why needs detector?
   depth_filter_ = new DepthFilter(feature_detector, depth_filter_cb);
+  // start another thread in 'updateSeedsLoop'
   depth_filter_->startThread();  // multi-thread
 }
 
@@ -67,6 +71,7 @@ void FrameHandlerMono::addImage(const cv::Mat& img, const double timestamp)
 
   // create new frame
   SVO_START_TIMER("pyramid_creation");
+  // clean key_pts_ and build img_pyr_
   new_frame_.reset(new Frame(cam_, img.clone(), timestamp));
   SVO_STOP_TIMER("pyramid_creation");
 
@@ -95,7 +100,7 @@ FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
   new_frame_->T_f_w_ = SE3(Matrix3d::Identity(), Vector3d::Zero());
   if(klt_homography_init_.addFirstFrame(new_frame_) == initialization::FAILURE)
     return RESULT_NO_KEYFRAME;  // wait until keyframe, i.e. enough features
-  new_frame_->setKeyframe();
+  new_frame_->setKeyframe();  // first frame as keyframe
   map_.addKeyframe(new_frame_);
   stage_ = STAGE_SECOND_FRAME;
   SVO_INFO_STREAM("Init: Selected first frame.");
@@ -106,9 +111,9 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processSecondFrame()
 {
   initialization::InitResult res = klt_homography_init_.addSecondFrame(new_frame_);
   if(res == initialization::FAILURE)
-    return RESULT_FAILURE;  // resetAll
+    return RESULT_FAILURE;  // not enough tracked features or inliers
   else if(res == initialization::NO_KEYFRAME)
-    return RESULT_NO_KEYFRAME;  // it does not matter, wait until keyframe, i.e. enough disparity and inliers
+    return RESULT_NO_KEYFRAME;  // it does not matter, wait until keyframe enough disparity
 
   // two-frame bundle adjustment
 #ifdef USE_BUNDLE_ADJUSTMENT

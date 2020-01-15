@@ -33,7 +33,7 @@ Frame::Frame(vk::AbstractCamera* cam, const cv::Mat& img, double timestamp) :
     id_(frame_counter_++),
     timestamp_(timestamp),
     cam_(cam),
-    key_pts_(5),
+    key_pts_(5),  // size 5
     is_keyframe_(false),
     v_kf_(NULL)
 {
@@ -73,7 +73,7 @@ void Frame::setKeyPoints()
 {
   for(size_t i = 0; i < 5; ++i)
     if(key_pts_[i] != NULL)
-      if(key_pts_[i]->point == NULL)
+      if(key_pts_[i]->point == NULL)  // invalid outlier, remove it
         key_pts_[i] = NULL;
 
   std::for_each(fts_.begin(), fts_.end(), [&](Feature* ftr){ if(ftr->point != NULL) checkKeyPoints(ftr); });
@@ -85,12 +85,14 @@ void Frame::checkKeyPoints(Feature* ftr)
   const int cv = cam_->height()/2;
 
   // center pixel
+  // 0: select the most central feature
   if(key_pts_[0] == NULL)
     key_pts_[0] = ftr;
   else if(std::max(std::fabs(ftr->px[0]-cu), std::fabs(ftr->px[1]-cv))
         < std::max(std::fabs(key_pts_[0]->px[0]-cu), std::fabs(key_pts_[0]->px[1]-cv)))
     key_pts_[0] = ftr;
 
+  // 1: select the most right-down feature
   if(ftr->px[0] >= cu && ftr->px[1] >= cv)
   {
     if(key_pts_[1] == NULL)
@@ -99,6 +101,7 @@ void Frame::checkKeyPoints(Feature* ftr)
           > (key_pts_[1]->px[0]-cu) * (key_pts_[1]->px[1]-cv))
       key_pts_[1] = ftr;
   }
+  // 2: select the most right-top feature
   if(ftr->px[0] >= cu && ftr->px[1] < cv)
   {
     if(key_pts_[2] == NULL)
@@ -107,7 +110,8 @@ void Frame::checkKeyPoints(Feature* ftr)
           > (key_pts_[2]->px[0]-cu) * (key_pts_[2]->px[1]-cv))
       key_pts_[2] = ftr;
   }
-  if(ftr->px[0] < cv && ftr->px[1] < cv)
+  // 3: select the most left-top feature
+  if(ftr->px[0] < cu && ftr->px[1] < cv)
   {
     if(key_pts_[3] == NULL)
       key_pts_[3] = ftr;
@@ -115,7 +119,8 @@ void Frame::checkKeyPoints(Feature* ftr)
           > (key_pts_[3]->px[0]-cu) * (key_pts_[3]->px[1]-cv))
       key_pts_[3] = ftr;
   }
-  if(ftr->px[0] < cv && ftr->px[1] >= cv)
+  // 4: select the most left-down feature
+  if(ftr->px[0] < cu && ftr->px[1] >= cv)
   {
     if(key_pts_[4] == NULL)
       key_pts_[4] = ftr;
@@ -156,7 +161,7 @@ namespace frame_utils {
 void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr)
 {
   pyr.resize(n_levels);
-  pyr[0] = img_level_0;
+  pyr[0] = img_level_0;  // higher level, lower resolution
   for(int i=1; i<n_levels; ++i)
   {
     pyr[i] = cv::Mat(pyr[i-1].rows/2, pyr[i-1].cols/2, CV_8U);
@@ -173,7 +178,7 @@ bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
   {
     if((*it)->point != NULL)
     {
-      const double z = frame.w2f((*it)->point->pos_).z();
+      const double z = frame.w2f((*it)->point->pos_).z();  // cam-z
       depth_vec.push_back(z);
       depth_min = fmin(z, depth_min);
     }
