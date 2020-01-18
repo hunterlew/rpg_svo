@@ -43,7 +43,7 @@ void getWarpMatrixAffine(
   // Compute affine warp matrix A_ref_cur
   const int halfpatch_size = 5;
   const Vector3d xyz_ref(f_ref*depth_ref);
-  Vector3d xyz_du_ref(cam_ref.cam2world(px_ref + Vector2d(halfpatch_size,0)*(1<<level_ref)));
+  Vector3d xyz_du_ref(cam_ref.cam2world(px_ref + Vector2d(halfpatch_size,0)*(1<<level_ref)));  // unit vector
   Vector3d xyz_dv_ref(cam_ref.cam2world(px_ref + Vector2d(0,halfpatch_size)*(1<<level_ref)));
   xyz_du_ref *= xyz_ref[2]/xyz_du_ref[2];  // assume the patch shares the same depth
   xyz_dv_ref *= xyz_ref[2]/xyz_dv_ref[2];
@@ -51,6 +51,7 @@ void getWarpMatrixAffine(
   const Vector2d px_du(cam_cur.world2cam(T_cur_ref*(xyz_du_ref)));
   const Vector2d px_dv(cam_cur.world2cam(T_cur_ref*(xyz_dv_ref)));
   // detla_pcur = A*delta_pref,
+  // it means how much displacement when ref feature moves a pixel
   // if A is identity matrix, it means no affine transform for the patch
   A_cur_ref.col(0) = (px_du - px_cur)/halfpatch_size;
   A_cur_ref.col(1) = (px_dv - px_cur)/halfpatch_size;
@@ -62,24 +63,26 @@ int getBestSearchLevel(
 {
   // Compute patch level in other image
   int search_level = 0;
-  double D = A_cur_ref.determinant();
-  while(D > 3.0 && search_level < max_level)
+  double D = A_cur_ref.determinant();  // find how large of displacement
+  while(D > 3.0 && search_level < max_level)  // in level where less then 3 pixel displacement
   {
     search_level += 1;
-    D *= 0.25;
+    D *= 0.25;  // 0.5 * 0.5
   }
   return search_level;
 }
 
 void warpAffine(
     const Matrix2d& A_cur_ref,
-    const cv::Mat& img_ref,
-    const Vector2d& px_ref,
+    const cv::Mat& img_ref,  // image in feature level
+    const Vector2d& px_ref,  // feature in zero level
     const int level_ref,
     const int search_level,
     const int halfpatch_size,
-    uint8_t* patch)
+    uint8_t* patch)  // patch in ref img
 {
+  // because we will use inverse model, 
+  // we use A_ref_cur (cur2ref) to get patch in ref image
   const int patch_size = halfpatch_size*2 ;
   const Matrix2f A_ref_cur = A_cur_ref.inverse().cast<float>();
   if(isnan(A_ref_cur(0,0)))
@@ -126,10 +129,10 @@ bool depthFromTriangulation(
 void Matcher::createPatchFromPatchWithBorder()
 {
   uint8_t* ref_patch_ptr = patch_;
-  for(int y=1; y<patch_size_+1; ++y, ref_patch_ptr += patch_size_)
+  for(int y=1; y<patch_size_+1; ++y, ref_patch_ptr += patch_size_)  // row, each row has patch_size_+2 cols
   {
     uint8_t* ref_patch_border_ptr = patch_with_border_ + y*(patch_size_+2) + 1;
-    for(int x=0; x<patch_size_; ++x)
+    for(int x=0; x<patch_size_; ++x)  // col
       ref_patch_ptr[x] = ref_patch_border_ptr[x];
   }
 }
@@ -137,17 +140,20 @@ void Matcher::createPatchFromPatchWithBorder()
 bool Matcher::findMatchDirect(
     const Point& pt,
     const Frame& cur_frame,
-    Vector2d& px_cur)
+    Vector2d& px_cur)  // reprojection
 {
+  // the point's closest observation too large angle diff from current frame
+  // not exactly last frame
   if(!pt.getCloseViewObs(cur_frame.pos(), ref_ftr_))
     return false;
 
+  // coresponding ref feature projected on ref frame
   if(!ref_ftr_->frame->cam_->isInFrame(
       ref_ftr_->px.cast<int>()/(1<<ref_ftr_->level), halfpatch_size_+2, ref_ftr_->level))
     return false;
 
-  // here do patch alignment again, but with initial value,
-  // taking possible affine transformation into consideration (maybe more precise?)
+  // here do patch alignment again, but focus on the displacement in spite of pose
+  // taking possible affine transformation into consideration
 
   // warp affine
   warp::getWarpMatrixAffine(
@@ -156,8 +162,8 @@ bool Matcher::findMatchDirect(
       cur_frame.T_f_w_ * ref_ftr_->frame->T_f_w_.inverse(), ref_ftr_->level, A_cur_ref_);
   search_level_ = warp::getBestSearchLevel(A_cur_ref_, Config::nPyrLevels()-1);
   warp::warpAffine(A_cur_ref_, ref_ftr_->frame->img_pyr_[ref_ftr_->level], ref_ftr_->px,
-                   ref_ftr_->level, search_level_, halfpatch_size_+1, patch_with_border_);
-  createPatchFromPatchWithBorder();
+                   ref_ftr_->level, search_level_, halfpatch_size_+1, patch_with_border_);  // get a patch from ref feature and transformation A
+  createPatchFromPatchWithBorder();  // border only used to compute gradients later ...
 
   // px_cur should be set
   Vector2d px_scaled(px_cur/(1<<search_level_));

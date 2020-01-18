@@ -29,7 +29,7 @@ namespace svo {
 class Map;
 class Point;
 
-/// Project points from the map into the image and find the corresponding
+/// Project points from the map (including multi frames) into the image and find the corresponding
 /// feature (corner). We don't search a match for every point but only for one
 /// point per cell. Thereby, we achieve a homogeneously distributed set of
 /// matched features and at the same time we can save processing time by not
@@ -65,7 +65,7 @@ public:
 private:
 
   /// A candidate is a point that projects into the image plane and for which we
-  /// will search a maching feature in the image.
+  /// will search a matching feature in the image.
   struct Candidate {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Point* pt;       //!< 3D point.
@@ -76,10 +76,11 @@ private:
   typedef std::vector<Cell*> CandidateGrid;  // vector contains grid, and each grid has a list
 
   /// The grid stores a set of candidate matches. For every grid cell we try to find one match.
+  // a list of Candidate per cell
   struct Grid
   {
     CandidateGrid cells;
-    vector<int> cell_order;  // TODO: for what?
+    vector<int> cell_order;  // randomly search match
     int cell_size;
     int grid_n_cols;
     int grid_n_rows;

@@ -229,6 +229,7 @@ bool align2D(
       for(int x=0; x<patch_size_; ++x, ++it, ++it_ref, ++it_ref_dx, ++it_ref_dy)
       {
         float search_pixel = wTL*it[0] + wTR*it[1] + wBL*it[cur_step] + wBR*it[cur_step+1];
+        // yes for inverse model, err = meas(cur_patch) - esti(warped_ref_patch)
         float res = search_pixel - *it_ref + mean_diff;
         Jres[0] -= res*(*it_ref_dx);
         Jres[1] -= res*(*it_ref_dy);

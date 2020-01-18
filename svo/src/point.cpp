@@ -102,16 +102,22 @@ bool Point::getCloseViewObs(const Vector3d& framepos, Feature*& ftr) const
   double min_cos_angle = 0;
   for(auto it=obs_.begin(), ite=obs_.end(); it!=ite; ++it)
   {
+  //               point
+//              /    |   \  
+//            /  ang | ang \
+//          /        |       \
+//     keyframe1   keyframe2   ...cur_frame
+
     Vector3d dir((*it)->frame->pos() - pos_); dir.normalize();
     double cos_angle = obs_dir.dot(dir);  // larger angle, smaller cos value
     if(cos_angle > min_cos_angle)
     {
-      min_cos_angle = cos_angle;  // find the largest angle diff from this frame
+      min_cos_angle = cos_angle;  // find the closest frame observing the point
       min_it = it;
     }
   }
-  ftr = *min_it;
-  if(min_cos_angle < 0.5) // assume that observations larger than 60° are useless // unstable
+  ftr = *min_it;  // pointing to the closest keyframe (as ref frame)'s feafure
+  if(min_cos_angle < 0.5) // if the closest frame angle diff still larger than 60°
     return false;
   return true;
 }

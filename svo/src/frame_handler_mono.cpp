@@ -46,7 +46,8 @@ void FrameHandlerMono::initialize()
   feature_detection::DetectorPtr feature_detector(
       new feature_detection::FastDetector(
           cam_->width(), cam_->height(), Config::gridSize(), Config::nPyrLevels()));
-  // input callback: new point and point candidates
+  // input callback: 
+  // calling map_.point_candidates_.newCandidatePoint(param1, param2)
   DepthFilter::callback_t depth_filter_cb = boost::bind(
       &MapPointCandidates::newCandidatePoint, &map_.point_candidates_, _1, _2);
   // TODO: why needs detector?
@@ -139,6 +140,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   new_frame_->T_f_w_ = last_frame_->T_f_w_;
 
   // sparse image align
+  // give initial pose
   SVO_START_TIMER("sparse_img_align");
   SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),  // 4 -> 2
                            30, SparseImgAlign::GaussNewton, false, false);
@@ -148,7 +150,8 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   SVO_DEBUG_STREAM("Img Align:\t Tracked = " << img_align_n_tracked);
 
   // map reprojection & feature alignment
-  // among close keyframes, choose the best reprojected points to track, not only just from last frame
+  // optimize 2d displacement
+  // among close keyframes, choose the best 3d point's reprojections to track, not only just from last frame
   // then, fix pose and refine alignment considering affine transformation
   // finally, check how many features are kept.
   // if not enough, reset-> relocating
@@ -164,7 +167,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
     SVO_WARN_STREAM_THROTTLE(1.0, "Not enough matched features.");
     new_frame_->T_f_w_ = last_frame_->T_f_w_; // reset to avoid crazy pose jumps
     tracking_quality_ = TRACKING_INSUFFICIENT;
-    return RESULT_FAILURE;
+    return RESULT_FAILURE;  // relocating
   }
 
   // pose optimization
@@ -194,14 +197,15 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   if(tracking_quality_ == TRACKING_INSUFFICIENT)
   {
     new_frame_->T_f_w_ = last_frame_->T_f_w_; // reset to avoid crazy pose jumps
-    return RESULT_FAILURE;
+    return RESULT_FAILURE;  // relocating
   }
   double depth_mean, depth_min;
   frame_utils::getSceneDepth(*new_frame_, depth_mean, depth_min);
+  // Attention!! criteria to select keyframe
   if(!needNewKf(depth_mean) || tracking_quality_ == TRACKING_BAD)
   {
-    depth_filter_->addFrame(new_frame_);
-    return RESULT_NO_KEYFRAME;
+    depth_filter_->addFrame(new_frame_);  // update old seeds. if converged, 3dpoint will be added to map candidate
+    return RESULT_NO_KEYFRAME;  // no keyframe, 3dpoint will not be added to map
   }
   new_frame_->setKeyframe();
   SVO_DEBUG_STREAM("New keyframe selected.");
@@ -213,6 +217,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   map_.point_candidates_.addCandidatePointToFrame(new_frame_);
 
   // optional bundle adjustment
+  // only in keyframe
 #ifdef USE_BUNDLE_ADJUSTMENT
   if(Config::lobaNumIter() > 0)
   {
@@ -234,7 +239,7 @@ FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
   depth_filter_->addKeyframe(new_frame_, depth_mean, 0.5*depth_min);
 
   // if limited number of keyframes, remove the one furthest apart
-  if(Config::maxNKfs() > 2 && map_.size() >= Config::maxNKfs())
+  if(Config::maxNKfs() > 2 && map_.size()  /* return keyframe size */>= Config::maxNKfs())
   {
     FramePtr furthest_frame = map_.getFurthestKeyframe(new_frame_->pos());
     depth_filter_->removeKeyframe(furthest_frame); // TODO this interrupts the mapper thread, maybe we can solve this better
@@ -318,12 +323,12 @@ bool FrameHandlerMono::needNewKf(double scene_depth_mean)
 {
   for(auto it=overlap_kfs_.begin(), ite=overlap_kfs_.end(); it!=ite; ++it)
   {
-    // relative position to world ori
+    // relative position to current frame
     Vector3d relpos = new_frame_->w2f(it->first->pos());
     if(fabs(relpos.x())/scene_depth_mean < Config::kfSelectMinDist() &&
        fabs(relpos.y())/scene_depth_mean < Config::kfSelectMinDist()*0.8 &&
        fabs(relpos.z())/scene_depth_mean < Config::kfSelectMinDist()*1.3)
-      return false;
+      return false;  // if any frame not enough translation from current frame, no keyframe
   }
   return true;
 }

@@ -110,13 +110,14 @@ void Map::getCloseKeyframes(
   for(auto kf : keyframes_)
   {
     // check if kf has overlaping field of view with frame, use therefore KeyPoints
+    // 5 keypoints in a frame: center and four corner
     for(auto keypoint : kf->key_pts_)
     {
       if(keypoint == nullptr)
         continue;
 
       // visible means z > 0 && (u,v) in image
-      // as long as one point visible, used as close keyframes
+      // as long as one keypoint visible, used as close keyframes
       if(frame->isVisible(keypoint->point->pos_))
       {
         close_kfs.push_back(
@@ -214,9 +215,10 @@ MapPointCandidates::~MapPointCandidates()
 
 void MapPointCandidates::newCandidatePoint(Point* point, double depth_sigma2)
 {
+  // seed converged, unknown -> candidate
   point->type_ = Point::TYPE_CANDIDATE;
   boost::unique_lock<boost::mutex> lock(mut_);
-  candidates_.push_back(PointCandidate(point, point->obs_.front()));
+  candidates_.push_back(PointCandidate(point, point->obs_.front() /* latest feature */));
 }
 
 void MapPointCandidates::addCandidatePointToFrame(FramePtr frame)
@@ -228,7 +230,7 @@ void MapPointCandidates::addCandidatePointToFrame(FramePtr frame)
     if(it->first->obs_.front()->frame == frame.get())
     {
       // insert feature in the frame
-      it->first->type_ = Point::TYPE_UNKNOWN;
+      it->first->type_ = Point::TYPE_UNKNOWN;  // TODO: why reset?
       it->first->n_failed_reproj_ = 0;
       it->second->frame->addFeature(it->second);
       it = candidates_.erase(it);

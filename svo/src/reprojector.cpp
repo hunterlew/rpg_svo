@@ -71,7 +71,7 @@ void Reprojector::reprojectMap(
   SVO_START_TIMER("reproject_kfs");
   list< pair<FramePtr,double> > close_kfs;
   map_.getCloseKeyframes(frame, close_kfs);  // search keyframes sharing a common fov
-                                             // one feature point is enough
+                                             // one frame key point is enough
 
   // Sort KFs with overlap according to their closeness (i.e. translations)
   close_kfs.sort(boost::bind(&std::pair<FramePtr, double>::second, _1) <
@@ -84,6 +84,9 @@ void Reprojector::reprojectMap(
   for(auto it_frame=close_kfs.begin(), ite_frame=close_kfs.end();
       it_frame!=ite_frame && n<options_.max_n_kfs; ++it_frame, ++n)  // max 10 close keyframes
   {
+
+    // counting how many points in close keyframes projected on current frame
+
     FramePtr ref_frame = it_frame->first;
     overlap_kfs.push_back(pair<FramePtr,size_t>(ref_frame,0));
 
@@ -95,11 +98,11 @@ void Reprojector::reprojectMap(
       if((*it_ftr)->point == NULL)  // no outliers
         continue;
 
-      // make sure we project a point only once
+      // make sure we project a point only once (because a point can be observed in different frames)
       if((*it_ftr)->point->last_projected_kf_id_ == frame->id_)
         continue;
       (*it_ftr)->point->last_projected_kf_id_ = frame->id_;
-      if(reprojectPoint(frame, (*it_ftr)->point))  // projected inside current frame
+      if(reprojectPoint(frame, (*it_ftr)->point))  // true if projected inside current frame
         overlap_kfs.back().second++;
     }
   }
@@ -115,7 +118,7 @@ void Reprojector::reprojectMap(
       if(!reprojectPoint(frame, it->first))
       {
         it->first->n_failed_reproj_ += 3;
-        if(it->first->n_failed_reproj_ > 30)
+        if(it->first->n_failed_reproj_ > 30)  // check by reprojections
         {
           map_.point_candidates_.deleteCandidate(*it);
           it = map_.point_candidates_.candidates_.erase(it);
@@ -144,6 +147,7 @@ void Reprojector::reprojectMap(
 
 bool Reprojector::pointQualityComparator(Candidate& lhs, Candidate& rhs)
 {
+  // type UNKNOWN by default
   if(lhs.pt->type_ > rhs.pt->type_)
     return true;
   return false;
@@ -165,7 +169,7 @@ bool Reprojector::reprojectCell(Cell& cell, FramePtr frame)
 
     bool found_match = true;
     if(options_.find_match_direct)
-      found_match = matcher_.findMatchDirect(*it->pt, *frame, it->px);  // feature align iteration
+      found_match = matcher_.findMatchDirect(*it->pt, *frame, it->px);  // find match with obs-closest kf's feature
 
       // point quality
     if(!found_match)
@@ -183,7 +187,8 @@ bool Reprojector::reprojectCell(Cell& cell, FramePtr frame)
       it->pt->type_ = Point::TYPE_GOOD;
 
     Feature* new_feature = new Feature(frame.get(), it->px, matcher_.search_level_);
-    frame->addFeature(new_feature);  // keep tracking this feature in new frame, one in cell
+    frame->addFeature(new_feature);  // keep tracking this feature(2d) in new frame, one in cell
+                                     // but new_feature->point still NULL
 
     // Here we add a reference in the feature to the 3D point, the other way
     // round is only done if this frame is selected as keyframe.
@@ -213,7 +218,7 @@ bool Reprojector::reprojectPoint(FramePtr frame, Point* point)
   {
     const int k = static_cast<int>(px[1]/grid_.cell_size)*grid_.grid_n_cols
                 + static_cast<int>(px[0]/grid_.cell_size);
-    grid_.cells.at(k)->push_back(Candidate(point, px));
+    grid_.cells.at(k)->push_back(Candidate(point, px));  // add to list
     return true;
   }
   return false;
